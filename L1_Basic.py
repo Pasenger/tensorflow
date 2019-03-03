@@ -5,6 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
+print('tensorflow.version:' + tf.__version__)
+
 # 从0到10取30个值
 data_x = np.linspace(0, 10, 30)
 

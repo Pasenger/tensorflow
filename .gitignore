@@ -106,3 +106,5 @@ $RECYCLE.BIN/
 
 /venv/
 .idea
+/data/
+/ck/
