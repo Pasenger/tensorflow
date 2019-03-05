@@ -2,10 +2,15 @@
 
 import numpy as np 
 import tensorflow as tf
+import time
+
+localtime = time.asctime( time.localtime(time.time()) )
+print ("start :", localtime)
 
 x = tf.placeholder('float', shape=[None, 32, 32, 3])
 y_ = tf.placeholder(tf.int32, shape=[None])
 keep_porb = tf.placeholder('float')
+training_phase = tf.placeholder(tf.bool)
 
 def img_pre(image):
     # 随机调节图像的亮度
@@ -27,39 +32,76 @@ learning_rate = 0.0001
 # 正则函数
 reg = tf.contrib.layers.l2_regularizer(scale=0.1)
 
-conv2d_1 = tf.contrib.layers.convolution2d(
-    img,
-    num_outputs=32,
-    weights_initializer=tf.truncated_normal_initializer(stddev=0.0001),
-    weights_regularizer=reg,
-    kernel_size=(5, 5),
-    activation_fn=tf.nn.relu,
-    stride=(1, 1),
-    padding='SAME',
-    trainable=True
-)
+# 使用批标准化替代
+# conv2d_1 = tf.contrib.layers.convolution2d(
+#     img,
+#     num_outputs=32,
+#     weights_initializer=tf.truncated_normal_initializer(stddev=0.0001),
+#     weights_regularizer=reg,
+#     kernel_size=(5, 5),
+#     activation_fn=tf.nn.relu,
+#     stride=(1, 1),
+#     padding='SAME',
+#     trainable=True
+# )
+
+# pool_1 = tf.nn.max_pool(
+#     conv2d_1,
+#     ksize=[1, 3, 3, 1],
+#     strides=[1, 2, 2, 1],
+#     padding='SAME'
+# )
+
+# conv2d_2 = tf.contrib.layers.convolution2d(
+#     pool_1,
+#     num_outputs=32,
+#     weights_initializer=tf.truncated_normal_initializer(stddev=0.001),
+#     weights_regularizer=reg,
+#     kernel_size=(5, 5),
+#     activation_fn=tf.nn.relu,
+#     stride=(1, 1),
+#     padding='SAME',
+#     trainable=True
+# )
+
+# pool_2 = tf.nn.max_pool(
+#     conv2d_2,
+#     ksize=[1, 3, 3, 1],
+#     strides=[1, 2, 2, 1],
+#     padding='SAME'
+# )
+
+# 第一个卷积层，跨度(5, 5), 输入3， 输出32
+conv_2d_w1 = tf.Variable(tf.truncated_normal([5, 5, 3, 32], stddev=0.0001))
+conv_2d_b1 = tf.Variable(tf.truncated_normal([32]))
+conv_2d_1 = tf.nn.conv2d(img, conv_2d_w1, strides=[1, 1, 1, 1], padding='SAME') + conv_2d_b1
+
+# 批标准化
+conv_2d_1 = tf.contrib.layers.batch_norm(conv_2d_1, decay=0.96, is_training=training_phase)
+
+# 激活函数
+conv_2d_1_output = tf.nn.relu(conv_2d_1)
 
 pool_1 = tf.nn.max_pool(
-    conv2d_1,
+    conv_2d_1_output,
     ksize=[1, 3, 3, 1],
     strides=[1, 2, 2, 1],
     padding='SAME'
 )
 
-conv2d_2 = tf.contrib.layers.convolution2d(
-    pool_1,
-    num_outputs=32,
-    weights_initializer=tf.truncated_normal_initializer(stddev=0.001),
-    weights_regularizer=reg,
-    kernel_size=(5, 5),
-    activation_fn=tf.nn.relu,
-    stride=(1, 1),
-    padding='SAME',
-    trainable=True
-)
+# 第二个卷积层，跨度(5, 5), 输入3， 输出32
+conv_2d_w2 = tf.Variable(tf.truncated_normal([5, 5, 32, 32], stddev=0.001))
+conv_2d_b2 = tf.Variable(tf.truncated_normal([32]))
+conv_2d_2 = tf.nn.conv2d(pool_1, conv_2d_w2, strides=[1, 1, 1, 1], padding='SAME') + conv_2d_b2
+
+# 批标准化
+conv_2d_2 = tf.contrib.layers.batch_norm(conv_2d_2, decay=0.96, is_training=training_phase)
+
+# 激活函数
+conv_2d_2_output = tf.nn.relu(conv_2d_2)
 
 pool_2 = tf.nn.max_pool(
-    conv2d_2,
+    conv_2d_2_output,
     ksize=[1, 3, 3, 1],
     strides=[1, 2, 2, 1],
     padding='SAME'
@@ -69,6 +111,9 @@ pool_2 = tf.nn.max_pool(
 conv_2d_w3 = tf.Variable(tf.truncated_normal([5, 5, 32, 64], stddev=0.01))
 conv_2d_b3 = tf.Variable(tf.truncated_normal([64]))
 conv_2d_3 = tf.nn.conv2d(pool_2, conv_2d_w3, strides=[1, 1, 1, 1], padding='SAME') + conv_2d_b3
+
+conv_2d_3 = tf.contrib.layers.batch_norm(conv_2d_3, decay=0.96, is_training=training_phase)
+
 conv_2d_3_output = tf.nn.relu(conv_2d_3)
 
 pool_3 = tf.nn.max_pool(
@@ -79,24 +124,43 @@ pool_3 = tf.nn.max_pool(
 )
 
 pool_3_flat = tf.reshape(pool_3, [-1, 4 * 4 * 64])
-fc_1 = tf.contrib.layers.fully_connected(
-    pool_3_flat,
-    1024,
-    weights_initializer=tf.truncated_normal_initializer(stddev=0.1),
-    weights_regularizer=reg,
-    activation_fn=tf.nn.relu
-)
 
-fc_2 = tf.contrib.layers.fully_connected(
-    fc_1,
-    128,
-    weights_initializer=tf.truncated_normal_initializer(stddev=0.1),
-    weights_regularizer=reg,
-    activation_fn=tf.nn.relu
-)
+# 使用批标准化替代
+# fc_1 = tf.contrib.layers.fully_connected(
+#     pool_3_flat,
+#     1024,
+#     weights_initializer=tf.truncated_normal_initializer(stddev=0.1),
+#     weights_regularizer=reg,
+#     activation_fn=tf.nn.relu
+# )
+
+# fc_2 = tf.contrib.layers.fully_connected(
+#     fc_1,
+#     128,
+#     weights_initializer=tf.truncated_normal_initializer(stddev=0.1),
+#     weights_regularizer=reg,
+#     activation_fn=tf.nn.relu
+# )
+
+fc_w1 = tf.Variable(tf.truncated_normal([4 * 4 * 64, 1024], stddev=0.1))
+fc_b1 = tf.Variable(tf.truncated_normal([1024]))
+fc_1 = tf.matmul(pool_3_flat, fc_w1) + fc_b1
+
+fc_1 = tf.contrib.layers.batch_norm(fc_1, decay=0.96, is_training=training_phase)
+
+fc_1_output = tf.nn.relu(fc_1)
+
+fc_w2 = tf.Variable(tf.truncated_normal([1024, 128], stddev=0.1))
+fc_b2 = tf.Variable(tf.truncated_normal([128]))
+fc_2 = tf.matmul(fc_1_output, fc_w2) + fc_b2
+
+fc_2 = tf.contrib.layers.batch_norm(fc_2, decay=0.96, is_training=training_phase)
+
+fc_2_output = tf.nn.relu(fc_2)
+
 
 # dropout
-fc2_drop = tf.nn.dropout(fc_2, keep_porb)
+fc2_drop = tf.nn.dropout(fc_2_output, keep_porb)
 
 # softmax
 out_w1 = tf.Variable(tf.truncated_normal([128, 10]))
@@ -112,6 +176,9 @@ weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
 # 对所有可训练的参数应用正则函数
 reg_ws = tf.contrib.layers.apply_regularization(reg, weights_list=weights)
 
+# 建立依赖项
+update_avg = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+
 # 计算loss, 没有使用独热编码所以使用sparse_softmax_cross_entropy_with_logits
 loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y_, logits=combine))
 
@@ -119,7 +186,8 @@ loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y_, l
 loss_fn = loss + tf.reduce_sum(reg_ws)
 
 # 训练
-train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss_fn)
+with tf.control_dependencies(update_avg):
+    train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss_fn)
 
 # 正确率
 accuracy = tf.reduce_mean(tf.cast(tf.equal(pred, y_), tf.float32))
@@ -162,12 +230,12 @@ for epoch in range(0, 100):
     
     for batch_xs, batch_ys in generatebatch(all_data, all_label, all_label.shape[0], batch_size):
         batch_xs = np.array(list(map(lambda x:x.reshape([3, 1024]).T.reshape([32, 32, 3]), batch_xs)))
-        sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys, keep_porb: 0.5})
+        sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys, keep_porb: 0.5, training_phase: True})
         if ii % 100 == 0:
-            print(sess.run([loss, accuracy, ], feed_dict={x: batch_xs, y_: batch_ys, keep_porb: 1}))
+            print(sess.run([loss, accuracy, ], feed_dict={x: batch_xs, y_: batch_ys, keep_porb: 1, training_phase: True}))
         ii += 1
     if epoch % 2 == 0:
-        res = sess.run([loss, accuracy, ], feed_dict={x: batch_xs, y_: batch_ys, keep_porb: 1})
+        res = sess.run([loss, accuracy, ], feed_dict={x: batch_xs, y_: batch_ys, keep_porb: 1, training_phase: True})
         print(epoch, res)
         saver.save(sess, './ck/L9_SIFAR10', global_step=epoch)
 
@@ -178,10 +246,13 @@ test_data = test[b'data']
 righ = []
 for batch_xs, batch_ys in generatebatch(test_data, test_label_hot, test_data.shape[0], 128):
     batch_xs = np.array(list(map(lambda x:x.reshape([3, 1024]).T.reshape([32, 32, 3]), batch_xs)))
-    acc = sess.run(accuracy, feed_dict={x: batch_xs, y_: batch_ys, keep_porb: 1})
+    acc = sess.run(accuracy, feed_dict={x: batch_xs, y_: batch_ys, keep_porb: 1, training_phase: False})
     righ.append(acc)
 
 print(sess.run(tf.reduce_mean(righ)))
 # 0.7701322
 
 sess.close()
+
+localtime = time.asctime( time.localtime(time.time()) )
+print ("finish :", localtime)
